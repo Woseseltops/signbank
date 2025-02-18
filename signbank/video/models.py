@@ -355,7 +355,7 @@ class ExampleVideo(models.Model):
         from signbank.tools import generate_still_image
         try:
             generate_still_image(self)
-        except OSError:
+        except (OSError, PermissionError):
             import sys
             print('Error generating still image', sys.exc_info())
 
@@ -377,7 +377,7 @@ class ExampleVideo(models.Model):
         small_video_path = self.small_video()
         try:
             os.unlink(self.videofile.path)
-        except OSError:
+        except (OSError, PermissionError):
             pass
 
     def reversion(self, revert=False):
@@ -503,7 +503,7 @@ class AnnotatedVideo(models.Model):
             if not only_eaf:
                 video_path = os.path.join(settings.WRITABLE_FOLDER, settings.ANNOTATEDSENTENCE_VIDEO_DIRECTORY, self.annotatedsentence.get_dataset().acronym, str(self.annotatedsentence.id))
                 shutil.rmtree(video_path)
-        except OSError:
+        except (OSError, PermissionError):
             pass
 
     def get_eaffile_name(self):
@@ -694,6 +694,8 @@ class GlossVideo(models.Model):
         """Return the URL of the small version for this video
         :param use_name: whether videofile.name should be used instead of videofile.path
         """
+        if not self.videofile:
+            return None
         small_video_path = add_small_appendix(self.videofile.path)
         if os.path.exists(small_video_path):
             if use_name:
@@ -730,7 +732,7 @@ class GlossVideo(models.Model):
         from signbank.tools import generate_still_image
         try:
             generate_still_image(self)
-        except OSError:
+        except (OSError, PermissionError):
             import sys
             print('Error generating still image', sys.exc_info())
 
@@ -751,6 +753,9 @@ class GlossVideo(models.Model):
 
         if settings.DEBUG_VIDEOS:
             print('delete_files GlossVideo: ', str(self.videofile))
+
+        if not self.videofile.name:
+            return
 
         small_video_path = self.small_video()
         try:
@@ -818,8 +823,6 @@ class GlossVideo(models.Model):
         # this coercion to a string type sometimes causes special characters in the filename to be a problem
         # code has been introduced elsewhere to make sure paths are the correct encoding
         glossvideoname = self.videofile.name
-        if settings.DEBUG_VIDEOS:
-            print('__str__ GlossVideo: ', self.videofile.name)
         return glossvideoname
 
     def is_glossvideonme(self):
@@ -959,13 +962,23 @@ class GlossVideoNME(GlossVideo):
 
     def delete_files(self):
         """Delete the files associated with this object"""
+        old_path = str(self.videofile)
+        if not old_path:
+            return
+        file_system_path = os.path.join(settings.WRITABLE_FOLDER, old_path)
         if settings.DEBUG_VIDEOS:
-            print('delete_files GlossVideoNME: ', str(self.videofile))
+            print('delete_files GlossVideoNME: ', file_system_path)
+        if not os.path.exists(file_system_path):
+            # Video file not found on server
+            # on the production server this is a problem
+            msg = "GlossVideoNME video file not found: " + file_system_path
+            print(msg)
+            return
         try:
-            os.unlink(self.videofile.path)
+            os.unlink(file_system_path)
         except (OSError, PermissionError):
             if settings.DEBUG_VIDEOS:
-                print('delete_files exception GlossVideo OSError, PermissionError: ', str(self.videofile))
+                print('delete_files exception GlossVideoNME OSError, PermissionError: ', file_system_path)
             pass
 
     def reversion(self, revert=False):
@@ -1025,6 +1038,8 @@ class GlossVideoPerspective(GlossVideo):
     def delete_files(self):
         """Delete the files associated with this object"""
         old_path = str(self.videofile)
+        if not old_path:
+            return
         file_system_path = os.path.join(settings.WRITABLE_FOLDER, old_path)
         if settings.DEBUG_VIDEOS:
             print('perspective video delete files: ', file_system_path)
@@ -1036,7 +1051,7 @@ class GlossVideoPerspective(GlossVideo):
             return
         try:
             os.unlink(file_system_path)
-        except OSError:
+        except (PermissionError, OSError):
             msg = "Perspective video file could not be deleted: " + file_system_path
             print(msg)
 
